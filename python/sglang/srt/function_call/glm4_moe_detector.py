@@ -166,7 +166,7 @@ class Glm4MoeDetector(BaseFormatDetector):
     """
 
     _STREAMING_PARTIAL_PATTERN = re.compile(
-        r"<tool_call>(.*?)(?:\\n|\n)(.*?)(</tool_call>|$)", re.DOTALL
+        r"<tool_call>(.*?)(?:\\n|\n|(?=<arg_key>)|(?=</tool_call>))(.*?)(</tool_call>|$)", re.DOTALL
     )
 
     def __init__(self):
@@ -175,7 +175,7 @@ class Glm4MoeDetector(BaseFormatDetector):
         self.eot_token = "</tool_call>"
         self.func_call_regex = r"<tool_call>.*?</tool_call>"
         self.func_detail_regex = re.compile(
-            r"<tool_call>(.*?)(?:\\n|\n)(.*)</tool_call>", re.DOTALL
+            r"<tool_call>(.*?)(?:\\n|\n|(?=<arg_key>)|(?=</tool_call>))(.*)</tool_call>", re.DOTALL
         )
         self.func_arg_regex = re.compile(
             r"<arg_key>(.*?)</arg_key>(?:\\n|\s)*<arg_value>(.*?)</arg_value>",

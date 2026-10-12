@@ -55,6 +55,7 @@ class IndexTopKShareState:
             topk_indices is not None
             and self.should_publish
             and is_cp_active(self._forward_batch)
+            and self._forward_batch.attn_cp_metadata is not None
         ):
             topk_indices = cp_gather_after_forward(topk_indices, self._forward_batch)
         self._topk_indices = topk_indices

@@ -167,7 +167,9 @@ def cal_padded_tokens(forward_batch: "ForwardBatch"):
     from sglang.srt.layers.cp.utils import is_cp_active
 
     # CP-v2 already pads each rank-local shard to its physical size
-    if is_cp_active(forward_batch):
+    # (0520fix) Dummy/warmup runs enter with attn_cp_metadata unbuilt; fall
+    # through to the non-CP padding path instead of crashing on None.
+    if is_cp_active(forward_batch) and forward_batch.attn_cp_metadata is not None:
         return forward_batch.attn_cp_metadata.per_rank_actual_token[
             get_parallel().attn_cp_rank
         ]

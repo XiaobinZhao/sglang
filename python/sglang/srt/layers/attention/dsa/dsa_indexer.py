@@ -658,7 +658,11 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
             with torch.cuda.stream(self.alt_stream):
                 key = self._maybe_rotate(key)
             current_stream.wait_stream(self.alt_stream)
-        elif self.alt_stream is not None and is_cp_active(forward_batch):
+        elif (
+            self.alt_stream is not None
+            and is_cp_active(forward_batch)
+            and forward_batch.attn_cp_metadata is not None
+        ):
             key = self._maybe_rotate(key)
             current_stream = torch.cuda.current_stream()
             self.alt_stream.wait_stream(current_stream)
@@ -677,7 +681,12 @@ class Indexer(DSANPUIndexerMixin, BaseFusedOp):
             key = self._maybe_rotate(key)
 
         # allgather+rerrange
-        if is_cp_active(forward_batch):
+        # (0520fix) Skip the CP gather for dummy/warmup batches whose
+        # attn_cp_metadata is unbuilt; the gather requires it.
+        if (
+            is_cp_active(forward_batch)
+            and forward_batch.attn_cp_metadata is not None
+        ):
             key = get_cp_strategy().materialize_full_indexer_k_cache(key, forward_batch)
         return query, key, weights_raw
 

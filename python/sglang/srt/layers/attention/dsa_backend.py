@@ -2641,11 +2641,12 @@ class DeepseekSparseAttnBackend(
             or buf.shape[1] != padded_heads
             or buf.shape[2] != head_dim
         ):
-            buf = torch.zeros(
-                (num_tokens, padded_heads, head_dim),
-                dtype=torch.float8_e4m3fn,
-                device=device,
-            )
+            with torch.inference_mode(False):
+                buf = torch.zeros(
+                    (num_tokens, padded_heads, head_dim),
+                    dtype=torch.float8_e4m3fn,
+                    device=device,
+                )
             self._q8kv8_born_q_buf = buf
         return buf[:num_tokens]
 
@@ -2766,11 +2767,12 @@ class DeepseekSparseAttnBackend(
             # Grown on demand.
             buf = self._q8kv8_qpad_buf
             if buf is None or buf.shape[0] < num_tokens:
-                buf = torch.zeros(
-                    (num_tokens, required_padding, head_dim),
-                    dtype=torch.float8_e4m3fn,
-                    device=dev,
-                )
+                with torch.inference_mode(False):
+                    buf = torch.zeros(
+                        (num_tokens, required_padding, head_dim),
+                        dtype=torch.float8_e4m3fn,
+                        device=dev,
+                    )
                 self._q8kv8_qpad_buf = buf
             q_fp8 = buf[:num_tokens]
             # head counts that divide 64 are powers of two, so the fused
@@ -2816,11 +2818,12 @@ class DeepseekSparseAttnBackend(
         total_kv_rows = num_kv_tokens + topk
         kv_buf = self._q8kv8_kv_buf
         if kv_buf is None or kv_buf.shape[0] < total_kv_rows:
-            kv_buf = torch.empty(
-                (total_kv_rows, head_dim),
-                dtype=torch.float8_e4m3fn,
-                device=dev,
-            )
+            with torch.inference_mode(False):
+                kv_buf = torch.empty(
+                    (total_kv_rows, head_dim),
+                    dtype=torch.float8_e4m3fn,
+                    device=dev,
+                )
             self._q8kv8_kv_buf = kv_buf
         if paged_kv_cache is not None:
             kv_padded = gather_dequant_requant_fp8_paged(
@@ -2867,13 +2870,14 @@ class DeepseekSparseAttnBackend(
             or out_bufs[0].shape[0] < s_q
             or out_bufs[0].shape[1] != pad_heads
         ):
-            out_bufs = (
-                torch.empty(
-                    s_q, pad_heads, v_head_dim, dtype=torch.bfloat16, device=dev
-                ),
-                torch.empty(s_q, pad_heads, dtype=torch.float32, device=dev),
-                torch.empty(s_q, pad_heads, dtype=torch.float32, device=dev),
-            )
+            with torch.inference_mode(False):
+                out_bufs = (
+                    torch.empty(
+                        s_q, pad_heads, v_head_dim, dtype=torch.bfloat16, device=dev
+                    ),
+                    torch.empty(s_q, pad_heads, dtype=torch.float32, device=dev),
+                    torch.empty(s_q, pad_heads, dtype=torch.float32, device=dev),
+                )
             self._q8kv8_out_bufs = out_bufs
 
         o, _, _ = sparse_mla_q8kv8_prefill_fwd(

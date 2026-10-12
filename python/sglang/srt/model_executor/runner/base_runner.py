@@ -598,12 +598,11 @@ class BaseRunner(ABC):
         if get_parallel().pp_size > 1:
             # PP0 already cp-split hidden_states before send.
             pp_hidden_tokens = num_tokens
-            if (
-                capture_forward_mode == ForwardMode.EXTEND
-                and get_parallel().pp_rank != 0
-                and mr.attn_cp_size > 1
-            ):
-                pp_hidden_tokens = num_tokens // mr.attn_cp_size
+            # (0521fix) Dummy runs never build attn_cp_metadata, so PP0's model
+            # forward (dsa_use_prefill_cp requires non-None metadata) never
+            # CP-splits the hidden states it sends. Drop the unconditional
+            # num_tokens // attn_cp_size slice on PP ranks != 0: it mismatched
+            # PP0's unsliced send and crashed rotary_emb (positions 8 vs k 1).
             pp_proxy_tensors = PPProxyTensors(
                 {k: v[:pp_hidden_tokens] for k, v in buffers.pp_proxy_tensors.items()}
             )

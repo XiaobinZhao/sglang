@@ -20,6 +20,7 @@ from sglang.srt.mem_cache.allocation_sizing import (
     page_aligned_decode_alloc_lens,
 )
 from sglang.srt.runtime_context import get_spec
+from sglang.srt.environ import envs
 from sglang.srt.utils import (
     is_cpu,
     is_cuda,
@@ -706,7 +707,14 @@ def _verify_uses_greedy(
     unconditionally. Rejection sampling routes it through the pure-Triton chain
     sampler instead, so only a HIP run without that still has to go greedy. Every
     other platform reduces to the original predicate.
+
+    SGLANG_SPEC_FORCE_GREEDY_VERIFY=1 restores the pre-v0.5.20 behaviour for
+    non-greedy requests (argmax-chain verify, the v0.5.16/0.5.19 accept-rate
+    profile) at the cost of sampling-correctness: temperature>0 requests are
+    effectively greedy-verified and their output distribution is biased.
     """
+    if envs.SGLANG_SPEC_FORCE_GREEDY_VERIFY.get():
+        return True
     return is_all_greedy or is_cpu or is_xpu or (is_hip and not use_rejection_sampling)
 
 

@@ -1386,6 +1386,11 @@ class Envs:
     # Saves the per-step draft forward, but the draft KV goes stale: an upshift
     # back to steps>0 starts from a cold draft state (low accept until it recovers).
     SGLANG_SPEC_SKIP_ZERO_STEP_DRAFT_EXTEND = EnvBool(False)
+    # Restore the pre-v0.5.20 verify behaviour for non-greedy requests: every
+    # request is greedy (argmax) verified, reproducing the v0.5.16/0.5.19
+    # accept-rate profile. Biases the output distribution of temperature>0
+    # requests (they are effectively greedy) - correctness-for-throughput.
+    SGLANG_SPEC_FORCE_GREEDY_VERIFY = EnvBool(False)
     # Which speculative decisions rank 0 broadcasts to its TP group; narrowing
     # it under live traffic isolates where ranks actually diverge. Comma
     # separated presets ("all", "rng", "init", "off"), or SpecTpSyncSite slugs

@@ -779,10 +779,7 @@ impl PDRouter {
                         "Decode request failed early"
                     );
                     decode.record_outcome(false);
-                    error::bad_gateway(
-                        "decode_server_error",
-                        format!("Decode server error: {}", e),
-                    )
+                    error::bad_gateway("decode_server_error", format!("Decode server error: {}", e))
                 }
             };
             response.extensions_mut().insert(BreakerOutcomesRecorded);

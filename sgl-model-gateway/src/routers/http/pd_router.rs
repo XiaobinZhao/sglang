@@ -716,14 +716,14 @@ impl PDRouter {
 
         // Poll both until prefill resolves; decode normally resolves later, but
         // may resolve first if it rejects the request outright.
-        let prefill_result;
+        let mut prefill_result: Option<Result<reqwest::Response, reqwest::Error>> = None;
         let mut decode_early: Option<Result<reqwest::Response, reqwest::Error>> = None;
-        let mut decode_doomed_early = false;
+        let mut decode_rejected_early: Option<Result<reqwest::Response, reqwest::Error>> = None;
         loop {
             tokio::select! {
                 biased;
                 pr = &mut prefill_fut => {
-                    prefill_result = pr;
+                    prefill_result = Some(pr);
                     break;
                 }
                 dr = &mut decode_fut, if decode_early.is_none() => {
@@ -734,12 +734,11 @@ impl PDRouter {
                     // the parked HTTP request after the bootstrap failure.
                     // Short-circuit instead of waiting for prefill (mirror
                     // of the prefill-failure path below).
-                    decode_doomed_early = dr.is_err()
-                        || matches!(&dr, Ok(resp) if !resp.status().is_success());
-                    decode_early = Some(dr);
-                    if decode_doomed_early {
+                    if dr.is_err() || matches!(&dr, Ok(resp) if !resp.status().is_success()) {
+                        decode_rejected_early = Some(dr);
                         break;
                     }
+                    decode_early = Some(dr);
                 }
             }
         }
@@ -751,16 +750,12 @@ impl PDRouter {
         // request and closes its connection. The prefill engine then detects
         // the disconnect and aborts the parked request, instead of blocking
         // in WaitingForInput until the disaggregation timeout.
-        if decode_doomed_early {
+        if let Some(decode_result) = decode_rejected_early {
             warn!(
                 "Decode failed early, aborting paired prefill request prefill_url={} decode_url={}",
                 prefill.url(),
                 decode.url()
             );
-
-            let decode_result = decode_early
-                .take()
-                .expect("decode_early must be set on the doomed path");
 
             // Tick decode by its real outcome (4xx = client fault, 5xx /
             // transport = worker fault). Don't record prefill: it was
@@ -785,6 +780,9 @@ impl PDRouter {
             response.extensions_mut().insert(BreakerOutcomesRecorded);
             return response;
         }
+
+        let prefill_result = prefill_result
+            .expect("prefill must have resolved when decode was not rejected early");
 
         // Decode can't generate without prefill's KV, so any prefill failure
         // (non-2xx / transport error) dooms the paired decode request, which would

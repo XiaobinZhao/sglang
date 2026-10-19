@@ -718,6 +718,7 @@ impl PDRouter {
         // may resolve first if it rejects the request outright.
         let prefill_result;
         let mut decode_early: Option<Result<reqwest::Response, reqwest::Error>> = None;
+        let mut decode_doomed_early = false;
         loop {
             tokio::select! {
                 biased;
@@ -726,9 +727,66 @@ impl PDRouter {
                     break;
                 }
                 dr = &mut decode_fut, if decode_early.is_none() => {
+                    // Decode resolved first. A non-2xx status or a transport
+                    // error dooms the request: prefill's KV transfer has no
+                    // receiver, so the prefill request parks in bootstrap
+                    // until its timeout — and sglang currently never answers
+                    // the parked HTTP request after the bootstrap failure.
+                    // Short-circuit instead of waiting for prefill (mirror
+                    // of the prefill-failure path below).
+                    decode_doomed_early = dr.is_err()
+                        || matches!(&dr, Ok(resp) if !resp.status().is_success());
                     decode_early = Some(dr);
+                    if decode_doomed_early {
+                        break;
+                    }
                 }
             }
+        }
+
+        // Decode rejected the request outright (non-2xx / transport error)
+        // before prefill resolved. Prefill cannot complete a useful KV
+        // transfer without decode, so stop polling prefill_fut; it is dropped
+        // when this function returns, which cancels the in-flight prefill
+        // request and closes its connection. The prefill engine then detects
+        // the disconnect and aborts the parked request, instead of blocking
+        // in WaitingForInput until the disaggregation timeout.
+        if decode_doomed_early {
+            warn!(
+                "Decode failed early, aborting paired prefill request prefill_url={} decode_url={}",
+                prefill.url(),
+                decode.url()
+            );
+
+            let decode_result = decode_early
+                .take()
+                .expect("decode_early must be set on the doomed path");
+
+            // Tick decode by its real outcome (4xx = client fault, 5xx /
+            // transport = worker fault). Don't record prefill: it was
+            // cancelled due to a decode fault, not its own, mirroring the
+            // prefill-failure path above where decode is not recorded.
+            let mut response = match decode_result {
+                Ok(res) => {
+                    decode.record_outcome(res.status().is_client_error());
+                    self.handle_decode_error_response(res, &context, prefill, decode)
+                        .await
+                }
+                Err(e) => {
+                    error!(
+                        decode_url = %decode.url(),
+                        error = %e,
+                        "Decode request failed early"
+                    );
+                    decode.record_outcome(false);
+                    error::bad_gateway(
+                        "decode_server_error",
+                        format!("Decode server error: {}", e),
+                    )
+                }
+            };
+            response.extensions_mut().insert(BreakerOutcomesRecorded);
+            return response;
         }
 
         // Decode can't generate without prefill's KV, so any prefill failure

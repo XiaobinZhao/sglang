@@ -29,4 +29,6 @@ jobs:
         run: |
           docker buildx build . -f docker/gateway.Dockerfile \
             -t "${{ inputs.image_tag }}" \
+            --provenance=false \
+            --sbom=false \
             --push

@@ -781,8 +781,8 @@ impl PDRouter {
             return response;
         }
 
-        let prefill_result = prefill_result
-            .expect("prefill must have resolved when decode was not rejected early");
+        let prefill_result =
+            prefill_result.expect("prefill must have resolved when decode was not rejected early");
 
         // Decode can't generate without prefill's KV, so any prefill failure
         // (non-2xx / transport error) dooms the paired decode request, which would

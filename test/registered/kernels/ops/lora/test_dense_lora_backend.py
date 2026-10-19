@@ -588,6 +588,8 @@ def test_unrequested_lm_head_does_not_prepare_metadata(monkeypatch):
 
 
 def test_v2_request_views_and_padding_refresh():
+    from sglang.srt.lora.layers import FusedMoEWithLoRA
+
     backend = TritonV2LoRABackend(SLOTS, DEVICE)
     backend.is_moe_lora = True
     backend.init_prefill_cuda_graph_batch_info(64)
@@ -597,6 +599,14 @@ def test_v2_request_views_and_padding_refresh():
     assert prefill.packed.data_ptr() != decode.packed.data_ptr()
     assert prefill.token_slots.data_ptr() != decode.token_slots.data_ptr()
     addresses = (prefill.packed.data_ptr(), prefill.token_slots.data_ptr())
+    layer = SimpleNamespace(
+        lora_backend=backend,
+        _moe_lora_runner=SimpleNamespace(run=lambda dispatch, batch: batch),
+        gate_up_lora_a_weights=None,
+        gate_up_lora_b_weights=None,
+        down_lora_a_weights=None,
+        down_lora_b_weights=None,
+    )
     _prepare(backend, _batch([1, 1], [3, 1], True), use_decode_cuda_graph=True)
     decode_snapshot = decode.packed.clone()
     for lengths, slots, ranks in (
@@ -627,6 +637,9 @@ def test_v2_request_views_and_padding_refresh():
         assert info.lora_ranks.tolist() == ranks
         assert info.scalings.tolist() == scales
         torch.testing.assert_close(decode.packed, decode_snapshot)
+        moe_batch = FusedMoEWithLoRA._run_moe_core_with_lora(layer, None)
+        assert moe_batch.token_lora_mapping.tolist() == expected
+        assert moe_batch.token_lora_mapping.untyped_storage().data_ptr() == addresses[1]
         assert (info.packed.data_ptr(), info.token_slots.data_ptr()) == addresses
         snapshot = info.packed.clone()
         _prepare(backend, _batch([1, 1], [3, 1], True), use_decode_cuda_graph=True)

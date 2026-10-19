@@ -27,8 +27,5 @@ jobs:
 
       - name: Build and push gateway image
         run: |
-          docker buildx build . -f docker/gateway.Dockerfile \
-            -t "${{ inputs.image_tag }}" \
-            --provenance=false \
-            --sbom=false \
-            --push
+          docker build -t "${{ inputs.image_tag }}" -f docker/gateway.Dockerfile .
+          docker push "${{ inputs.image_tag }}"
